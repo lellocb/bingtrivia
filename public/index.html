@@ -99,8 +99,6 @@
         }
       });
 
-      // In public/index.html
-
       async function fetchTrivia(topic) {
         resultsContainer.innerHTML = "";
         showStatusMessage(
@@ -108,7 +106,7 @@
           `Generating curiosities about "${topic}"...`
         );
 
-        let fullResponse = ""; // Keep this to build the final string
+        let fullResponse = "";
 
         try {
           const response = await fetch(API_URL, {
@@ -126,34 +124,53 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
 
-          // This loop now just reads and decodes. The parsing happens *after* it's all done.
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             fullResponse += decoder.decode(value, { stream: true });
           }
 
-          // The JSON cleaning logic from before is still essential
+          // --- NEW, MORE ROBUST JSON PARSING LOGIC ---
+          // This logic finds the first complete JSON object and ignores any trailing data.
           const firstBraceIndex = fullResponse.indexOf("{");
-          const lastBraceIndex = fullResponse.lastIndexOf("}");
+          if (firstBraceIndex === -1) {
+            throw new Error("No JSON object found in the response.");
+          }
 
-          if (firstBraceIndex === -1 || lastBraceIndex === -1) {
-            throw new Error(
-              "Valid JSON object not found in the streaming response."
-            );
+          let braceCount = 0;
+          let lastBraceIndex = -1;
+          for (let i = firstBraceIndex; i < fullResponse.length; i++) {
+            if (fullResponse[i] === "{") {
+              braceCount++;
+            } else if (fullResponse[i] === "}") {
+              braceCount--;
+            }
+
+            if (braceCount === 0) {
+              lastBraceIndex = i;
+              break; // Found the end of the first complete object
+            }
+          }
+
+          if (lastBraceIndex === -1) {
+            throw new Error("Incomplete JSON object received.");
           }
 
           const jsonString = fullResponse.substring(
             firstBraceIndex,
             lastBraceIndex + 1
           );
+          // --- END OF NEW LOGIC ---
 
           const triviaData = JSON.parse(jsonString);
           renderResults(triviaData);
           hideStatusMessage();
         } catch (error) {
           console.error("Fetch Trivia Error:", error);
-          console.error("Raw response received before error:", fullResponse);
+          console.error(
+            "Malformed response string that caused the error:",
+            fullResponse
+          );
           showStatusMessage(
             "error",
             `Something went wrong. Please check the console and try again. (${error.message})`
