@@ -57,6 +57,8 @@ app.post("/api/trivia", async (req, res) => {
   }
 });
 
+// Inside server.js
+
 function getPrompt(topic) {
   return `You are a brilliant trivia and fun fact generator. A user is interested in the topic: "${topic}".
 Your task is to generate at least 30 interesting items about this topic.
@@ -64,8 +66,8 @@ Your task is to generate at least 30 interesting items about this topic.
 **Instructions:**
 1.  Provide a mix of content types: intriguing questions, "Did you know...?" facts, and actionable tips.
 2.  Group the items into 3-4 relevant, emoji-prefixed categories (e.g., "🔬 Science & Biology", "🏛️ History & Culture").
-3.  For each item, provide the main text and a clean, effective Google search query for it.
-4.  The output must be a single, valid JSON object. Do not include any text or markdown formatting before or after the JSON.
+3.  For each item, provide the main text and a clean, effective Bing search query for it.
+4.  IMPORTANT: Your entire response MUST be ONLY the raw JSON object, starting with { and ending with }. Do not include the markdown specifier \`\`\`json, any introductory text, or any other characters outside of the JSON object itself.
 
 **JSON Structure Example:**
 \`\`\`json

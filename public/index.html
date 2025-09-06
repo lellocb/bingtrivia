@@ -122,37 +122,36 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let fullResponse = "";
-          let buffer = "";
 
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop(); // Keep any partial line for the next chunk
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.substring(6);
-                if (data.trim() === "[DONE]") continue;
-                try {
-                  const json = JSON.parse(data);
-                  if (json.choices[0].delta.content) {
-                    fullResponse += json.choices[0].delta.content;
-                  }
-                } catch (error) {
-                  console.warn("Skipping partial JSON in stream:", data);
-                }
-              }
-            }
+            fullResponse += decoder.decode(value, { stream: true });
           }
 
-          const triviaData = JSON.parse(fullResponse);
+          // --- NEW CODE BLOCK TO CLEAN THE RESPONSE ---
+          // This is the crucial fix. It finds the first '{' and the last '}'
+          // to extract the JSON, ignoring any surrounding text or markdown.
+          const firstBraceIndex = fullResponse.indexOf("{");
+          const lastBraceIndex = fullResponse.lastIndexOf("}");
+
+          if (firstBraceIndex === -1 || lastBraceIndex === -1) {
+            throw new Error("Valid JSON object not found in the response.");
+          }
+
+          const jsonString = fullResponse.substring(
+            firstBraceIndex,
+            lastBraceIndex + 1
+          );
+          // --- END OF NEW CODE BLOCK ---
+
+          const triviaData = JSON.parse(jsonString); // Parse the cleaned string
           renderResults(triviaData);
           hideStatusMessage();
         } catch (error) {
           console.error("Fetch Trivia Error:", error);
+          // We can now show the malformed string that caused the error for easier debugging
+          console.error("Malformed response string:", fullResponse);
           showStatusMessage(
             "error",
             `Something went wrong. Please check the console and try again. (${error.message})`
