@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Curiosity Engine | Trivia Search</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Curiosity Engine</h1>
+        <p>
+          Enter a topic and discover interesting questions, facts, and tips.
+        </p>
+      </header>
+      <form id="topic-form">
+        <input
+          type="text"
+          id="topic-input"
+          placeholder="e.g., The Roman Empire, The Science of Sleep..."
+          required
+        />
+        <button type="submit">Generate</button>
+      </form>
+      <div id="suggested-topics-container">
+        <h3>Or, try one of today's topics:</h3>
+        <div id="suggested-topics"></div>
+      </div>
+      <div id="status-message"></div>
+      <div id="results-container"></div>
+    </main>
+
+    <script>
+      const API_URL = "/api/trivia"; // Points to our own secure backend!
+
+      const topicForm = document.getElementById("topic-form");
+      const topicInput = document.getElementById("topic-input");
+      const suggestedTopicsContainer =
+        document.getElementById("suggested-topics");
+      const statusMessageContainer = document.getElementById("status-message");
+      const resultsContainer = document.getElementById("results-container");
+
+      document.addEventListener("DOMContentLoaded", () => {
+        loadInitialTopics();
+      });
+
+      function loadInitialTopics() {
+        const topics = [
+          "Bioluminescence",
+          "The Silk Road",
+          "Ancient Egyptian Inventions",
+          "The Challenger Deep",
+          "The History of Coffee",
+          "Quantum Computing",
+        ];
+        suggestedTopicsContainer.innerHTML = "";
+        topics.forEach((topic) => {
+          const button = document.createElement("button");
+          button.className = "topic-button";
+          button.textContent = topic;
+          button.dataset.topic = topic;
+          suggestedTopicsContainer.appendChild(button);
+        });
+      }
+
+      topicForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const topic = topicInput.value.trim();
+        if (topic) {
+          fetchTrivia(topic);
+        }
+      });
+      suggestedTopicsContainer.addEventListener("click", (e) => {
+        if (e.target.classList.contains("topic-button")) {
+          const topic = e.target.dataset.topic;
+          topicInput.value = topic;
+          fetchTrivia(topic);
+        }
+      });
+      resultsContainer.addEventListener("click", (e) => {
+        const item = e.target.closest(".result-item");
+        if (item) {
+          const query = item.dataset.searchQuery;
+          if (query) {
+            window.open(
+              `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+              "_blank"
+            );
+          }
+        }
+      });
+
+      async function fetchTrivia(topic) {
+        resultsContainer.innerHTML = "";
+        showStatusMessage(
+          "loading",
+          `Generating curiosities about "${topic}"...`
+        );
+
+        try {
+          const response = await fetch(API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ topic: topic }),
+          });
+
+          if (!response.ok) {
+            throw new Error(
+              `Server Error: ${response.status} ${response.statusText}`
+            );
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let fullResponse = "";
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop(); // Keep any partial line for the next chunk
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.substring(6);
+                if (data.trim() === "[DONE]") continue;
+                try {
+                  const json = JSON.parse(data);
+                  if (json.choices[0].delta.content) {
+                    fullResponse += json.choices[0].delta.content;
+                  }
+                } catch (error) {
+                  console.warn("Skipping partial JSON in stream:", data);
+                }
+              }
+            }
+          }
+
+          const triviaData = JSON.parse(fullResponse);
+          renderResults(triviaData);
+          hideStatusMessage();
+        } catch (error) {
+          console.error("Fetch Trivia Error:", error);
+          showStatusMessage(
+            "error",
+            `Something went wrong. Please check the console and try again. (${error.message})`
+          );
+        }
+      }
+
+      function renderResults(data) {
+        resultsContainer.innerHTML = "";
+        for (const categoryName in data) {
+          const categoryElement = document.createElement("div");
+          categoryElement.className = "category";
+          const title = document.createElement("h2");
+          title.textContent = categoryName;
+          categoryElement.appendChild(title);
+
+          const items = data[categoryName];
+          items.forEach((item) => {
+            const itemElement = document.createElement("div");
+            itemElement.className = "result-item";
+            itemElement.textContent = item.text;
+            itemElement.dataset.searchQuery = item.search_query;
+            categoryElement.appendChild(itemElement);
+          });
+          resultsContainer.appendChild(categoryElement);
+        }
+      }
+
+      function showStatusMessage(type, message) {
+        statusMessageContainer.style.display = "block";
+        if (type === "loading") {
+          statusMessageContainer.innerHTML = `<div class="loader"></div><div>${message}</div>`;
+          statusMessageContainer.classList.remove("error");
+        } else if (type === "error") {
+          statusMessageContainer.innerHTML = `⚠️ ${message}`;
+          statusMessageContainer.classList.add("error");
+        }
+      }
+
+      function hideStatusMessage() {
+        statusMessageContainer.style.display = "none";
+      }
+    </script>
+  </body>
+</html>
