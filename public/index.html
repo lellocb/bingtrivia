@@ -29,6 +29,7 @@
 
     <script>
         const API_URL = "/api/trivia";
+        const SUGGESTIONS_URL = "/api/suggested-topics"; // New endpoint URL
 
         const topicForm = document.getElementById('topic-form');
         const topicInput = document.getElementById('topic-input');
@@ -39,45 +40,63 @@
         document.addEventListener('DOMContentLoaded', () => { loadInitialTopics(); });
         topicForm.addEventListener('submit', (e) => { e.preventDefault(); const topic = topicInput.value.trim(); if (topic) { fetchTrivia(topic); } });
         suggestedTopicsContainer.addEventListener('click', (e) => { if (e.target.classList.contains('topic-button')) { const topic = e.target.dataset.topic; topicInput.value = topic; fetchTrivia(topic); } });
-        resultsContainer.addEventListener('click', (e) => { const item = e.target.closest('.result-item'); if (item) { const query = item.dataset.searchQuery; if(query) { window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank'); } } });
+        
+        // --- MODIFIED: Changed search engine to Bing ---
+        resultsContainer.addEventListener('click', (e) => { 
+            const item = e.target.closest('.result-item'); 
+            if (item) { 
+                const query = item.dataset.searchQuery; 
+                if(query) { 
+                    // Changed from google.com to bing.com
+                    window.open(`https://www.bing.com/search?q=${encodeURIComponent(query)}`, '_blank'); 
+                } 
+            } 
+        });
 
+        // --- MODIFIED: This function now fetches topics from the server ---
+        async function loadInitialTopics() {
+            try {
+                const response = await fetch(SUGGESTIONS_URL);
+                const topics = await response.json();
+                
+                suggestedTopicsContainer.innerHTML = ''; // Clear existing
+                topics.forEach(topic => {
+                    const button = document.createElement('button');
+                    button.className = 'topic-button';
+                    button.textContent = topic;
+                    button.dataset.topic = topic;
+                    suggestedTopicsContainer.appendChild(button);
+                });
+            } catch (error) {
+                console.error("Could not load suggested topics:", error);
+                // In case of error, you could display a message or hide the section
+                suggestedTopicsContainer.innerHTML = '<p>Could not load topics.</p>';
+            }
+        }
+
+        // The rest of the script (fetchTrivia, renderResults, etc.) remains exactly the same
         async function fetchTrivia(topic) {
             resultsContainer.innerHTML = '';
             showStatusMessage('loading', `Generating curiosities about "${topic}"...`);
-            
             let assembledJsonString = '';
-
             try {
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topic: topic })
-                });
-
+                const response = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ topic: topic }) });
                 if (!response.ok) { throw new Error(`Server Error: ${response.status} ${response.statusText}`); }
-
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
-                
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
-                    buffer = lines.pop(); 
-
+                    buffer = lines.pop();
                     for (const line of lines) {
                         if (!line.startsWith('data: ')) continue;
-
                         const data = line.substring(6);
                         if (data.trim() === '[DONE]') continue;
-                        
                         try {
                             const chunkJson = JSON.parse(data);
-                            // --- THIS IS THE CRITICAL FIX ---
-                            // Safely check if the chunk contains the text content we need
                             if (chunkJson.choices && chunkJson.choices[0] && chunkJson.choices[0].delta && typeof chunkJson.choices[0].delta.content === 'string') {
                                 assembledJsonString += chunkJson.choices[0].delta.content;
                             }
@@ -86,40 +105,26 @@
                         }
                     }
                 }
-                
                 const firstBraceIndex = assembledJsonString.indexOf('{');
-                if (firstBraceIndex === -1) {
-                    throw new Error("No JSON object found in the assembled LLM response.");
-                }
-
+                if (firstBraceIndex === -1) { throw new Error("No JSON object found in the assembled LLM response."); }
                 let braceCount = 0;
                 let lastBraceIndex = -1;
                 for (let i = firstBraceIndex; i < assembledJsonString.length; i++) {
                     if (assembledJsonString[i] === '{') braceCount++;
                     else if (assembledJsonString[i] === '}') braceCount--;
-                    if (braceCount === 0) {
-                        lastBraceIndex = i;
-                        break;
-                    }
+                    if (braceCount === 0) { lastBraceIndex = i; break; }
                 }
-
-                if (lastBraceIndex === -1) {
-                    throw new Error("Incomplete JSON object in the assembled LLM response.");
-                }
-
+                if (lastBraceIndex === -1) { throw new Error("Incomplete JSON object in the assembled LLM response."); }
                 const finalJsonString = assembledJsonString.substring(firstBraceIndex, lastBraceIndex + 1);
-
                 const triviaData = JSON.parse(finalJsonString);
-                renderResults( triviaData );
+                renderResults(triviaData);
                 hideStatusMessage();
-
             } catch (error) {
                 console.error('CLIENT-SIDE ERROR:', error);
                 console.error('The assembled string that caused the error was:', assembledJsonString); 
                 showStatusMessage('error', `An error occurred. Please open the developer console (F12) for details.`);
             }
         }
-
         function renderResults(data) {
             resultsContainer.innerHTML = '';
             for (const categoryName in data) {
@@ -128,7 +133,6 @@
                 const title = document.createElement('h2');
                 title.textContent = categoryName;
                 categoryElement.appendChild(title);
-
                 const items = data[categoryName];
                 if (Array.isArray(items)) {
                     items.forEach(item => {
@@ -144,25 +148,11 @@
                 resultsContainer.appendChild(categoryElement);
             }
         }
-
-        function loadInitialTopics() {
-            const topics = ["Bioluminescence", "The Silk Road", "Ancient Egyptian Inventions", "The Challenger Deep", "The History of Coffee", "Quantum Computing"];
-            suggestedTopicsContainer.innerHTML = '';
-            topics.forEach(topic => {
-                const button = document.createElement('button');
-                button.className = 'topic-button';
-                button.textContent = topic;
-                button.dataset.topic = topic;
-                suggestedTopicsContainer.appendChild(button);
-            });
-        }
-        
         function showStatusMessage(type, message) {
             statusMessageContainer.style.display = 'block';
             if (type === 'loading') { statusMessageContainer.innerHTML = `<div class="loader"></div><div>${message}</div>`; statusMessageContainer.classList.remove('error'); }
             else if (type === 'error') { statusMessageContainer.innerHTML = `⚠️ ${message}`; statusMessageContainer.classList.add('error'); }
         }
-
         function hideStatusMessage() { statusMessageContainer.style.display = 'none'; }
     </script>
 </body>
