@@ -45,7 +45,7 @@
             resultsContainer.innerHTML = '';
             showStatusMessage('loading', `Generating curiosities about "${topic}"...`);
             
-            let fullResponse = '';
+            let assembledJsonString = '';
 
             try {
                 const response = await fetch(API_URL, {
@@ -58,33 +58,57 @@
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
+                let buffer = '';
                 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    fullResponse += decoder.decode(value, { stream: true });
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // Keep any partial line for the next chunk
+
+                    for (const line of lines) {
+                        // Skip empty lines or comments
+                        if (!line.trim() || line.startsWith(':')) {
+                            continue;
+                        }
+
+                        // This is the core logic: process only lines with the 'data: ' prefix
+                        if (line.startsWith('data: ')) {
+                            const data = line.substring(6); // Remove 'data: ' prefix
+                            
+                            // Stop if we see the [DONE] signal
+                            if (data.trim() === '[DONE]') {
+                                continue;
+                            }
+
+                            // Try to parse the SSE JSON payload
+                            try {
+                                const chunkJson = JSON.parse(data);
+                                if (chunkJson.choices && chunkJson.choices.delta.content) {
+                                    // Append the actual text fragment to our assembly string
+                                    assembledJsonString += chunkJson.choices.delta.content;
+                                }
+                            } catch (e) {
+                                console.warn("Skipping non-JSON data chunk in stream:", data);
+                            }
+                        }
+                    }
                 }
                 
-                // --- CRITICAL DEBUG LOGGING ---
-                // This will show us EXACTLY what the server sent before we try to parse it.
-                console.log("--- RAW RESPONSE FROM SERVER ---");
-                console.log(fullResponse);
-                console.log("--- END OF RAW RESPONSE ---");
-
-                // The robust JSON parsing logic
-                const firstBraceIndex = fullResponse.indexOf('{');
+                // Now, assembledJsonString contains the complete text sent by the LLM
+                // We still need to clean it of markdown and find the valid JSON inside
+                const firstBraceIndex = assembledJsonString.indexOf('{');
                 if (firstBraceIndex === -1) {
-                    throw new Error("No JSON object found in the response.");
+                    throw new Error("No JSON object found in the assembled LLM response.");
                 }
 
                 let braceCount = 0;
                 let lastBraceIndex = -1;
-                for (let i = firstBraceIndex; i < fullResponse.length; i++) {
-                    if (fullResponse[i] === '{') {
-                        braceCount++;
-                    } else if (fullResponse[i] === '}') {
-                        braceCount--;
-                    }
+                for (let i = firstBraceIndex; i < assembledJsonString.length; i++) {
+                    if (assembledJsonString[i] === '{') braceCount++;
+                    else if (assembledJsonString[i] === '}') braceCount--;
                     if (braceCount === 0) {
                         lastBraceIndex = i;
                         break;
@@ -92,18 +116,18 @@
                 }
 
                 if (lastBraceIndex === -1) {
-                    throw new Error("Incomplete JSON object received.");
+                    throw new Error("Incomplete JSON object in the assembled LLM response.");
                 }
 
-                const jsonString = fullResponse.substring(firstBraceIndex, lastBraceIndex + 1);
+                const finalJsonString = assembledJsonString.substring(firstBraceIndex, lastBraceIndex + 1);
 
-                const triviaData = JSON.parse(jsonString);
+                const triviaData = JSON.parse(finalJsonString);
                 renderResults(triviaData);
                 hideStatusMessage();
 
             } catch (error) {
                 console.error('CLIENT-SIDE ERROR:', error);
-                console.error('The raw response that caused the error was:', fullResponse); 
+                console.error('The assembled string that caused the error was:', assembledJsonString); 
                 showStatusMessage('error', `An error occurred. Please open the developer console (F12) for details.`);
             }
         }
@@ -117,14 +141,19 @@
                 title.textContent = categoryName;
                 categoryElement.appendChild(title);
 
-                const items = data[categoryName];
-                items.forEach(item => {
-                    const itemElement = document.createElement('div');
-                    itemElement.className = 'result-item';
-                    itemElement.textContent = item.text;
-                    itemElement.dataset.searchQuery = item.search_query;
-                    categoryElement.appendChild(itemElement);
-                });
+                const items = data[categoryName]; // This line was failing before
+                // A check to prevent the error, just in case
+                if (Array.isArray(items)) {
+                    items.forEach(item => {
+                        const itemElement = document.createElement('div');
+                        itemElement.className = 'result-item';
+                        itemElement.textContent = item.text;
+                        itemElement.dataset.searchQuery = item.search_query;
+                        categoryElement.appendChild(itemElement);
+                    });
+                } else {
+                     console.error(`Data for category "${categoryName}" is not an array:`, items);
+                }
                 resultsContainer.appendChild(categoryElement);
             }
         }
