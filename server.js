@@ -1,63 +1,71 @@
-import express from "express";
-import "dotenv/config";
-import { Readable } from "stream"; // <--- CHANGE 1: IMPORT THIS
+import express from 'express';
+import 'dotenv/config';
+import { Readable } from 'stream';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-app.use(express.static("public"));
+app.use(express.static('public'));
 
-app.post("/api/trivia", async (req, res) => {
-  const { topic } = req.body;
-  const apiKey = process.env.OPENROUTER_API_KEY;
+app.post('/api/trivia', async (req, res) => {
+    // --- DEBUG LOGGING ---
+    console.log(`[${new Date().toISOString()}] Received request for /api/trivia`);
+    
+    const { topic } = req.body;
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
-  if (!apiKey) {
-    console.error("API key is not configured.");
-    return res.status(500).json({ error: "Server configuration error." });
-  }
+    // --- DEBUG LOGGING ---
+    console.log(`Topic received: "${topic}"`);
+    console.log('OpenRouter API Key found:', !!apiKey);
 
-  if (!topic) {
-    return res.status(400).json({ error: "Topic is required." });
-  }
-
-  try {
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "mistralai/mistral-7b-instruct:free",
-          messages: [{ role: "user", content: getPrompt(topic) }],
-          stream: true,
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error("OpenRouter API error:", errorBody);
-      throw new Error(`OpenRouter API error: ${response.statusText}`);
+    if (!apiKey) {
+        console.error('CRITICAL: API key not configured.');
+        return res.status(500).json({ error: 'Server configuration error.' });
+    }
+    if (!topic) {
+        console.error('Request failed: Topic is required.');
+        return res.status(400).json({ error: 'Topic is required.' });
     }
 
-    res.setHeader("Content-Type", "text/event-stream");
+    try {
+        // --- DEBUG LOGGING ---
+        console.log('Sending request to OpenRouter...');
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: "mistralai/mistral-7b-instruct:free",
+                messages: [{ role: 'user', content: getPrompt(topic) }],
+                stream: true,
+            })
+        });
+        
+        // --- DEBUG LOGGING ---
+        console.log('Received response from OpenRouter. Status:', response.status);
 
-    // --- CHANGE 2: CONVERT THE WEB STREAM TO A NODE.JS STREAM BEFORE PIPING ---
-    Readable.fromWeb(response.body).pipe(res);
-  } catch (error) {
-    console.error("Error fetching trivia:", error.message);
-    // Important: Don't try to send a JSON response if headers are already sent by the pipe
-    if (!res.headersSent) {
-      res.status(500).json({ error: "Failed to fetch trivia data." });
+        if (!response.ok) {
+            // Log the error response from OpenRouter itself
+            const errorBody = await response.text();
+            console.error('OpenRouter API returned an error:', response.status, errorBody);
+            throw new Error(`OpenRouter API error: ${response.statusText}`);
+        }
+
+        console.log('Streaming response back to client...');
+        res.setHeader('Content-Type', 'text/event-stream');
+        Readable.fromWeb(response.body).pipe(res);
+
+    } catch (error) {
+        // --- DEBUG LOGGING ---
+        console.error('FATAL: An error occurred in the /api/trivia handler:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Failed to fetch trivia data.' });
+        }
     }
-  }
 });
-
-// Inside server.js
 
 function getPrompt(topic) {
   return `You are a brilliant trivia and fun fact generator. A user is interested in the topic: "${topic}".
@@ -91,5 +99,5 @@ Now, generate the JSON for the topic: "${topic}"`;
 }
 
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
