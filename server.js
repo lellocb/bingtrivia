@@ -60,7 +60,7 @@ app.post('/api/trivia', async (req, res) => {
 
     } catch (error) {
         // --- DEBUG LOGGING ---
-        console.error('FATAL: An error occurred in the /api/trivia handler:', error);
+        console.error('FATAL: An error occurred in the /api/trivia handler:', error.message);
         if (!res.headersSent) {
             res.status(500).json({ error: 'Failed to fetch trivia data.' });
         }
@@ -68,7 +68,7 @@ app.post('/api/trivia', async (req, res) => {
 });
 
 function getPrompt(topic) {
-  return `You are a brilliant trivia and fun fact generator. A user is interested in the topic: "${topic}".
+    return `You are a brilliant trivia and fun fact generator. A user is interested in the topic: "${topic}".
 Your task is to generate at least 30 interesting items about this topic.
 
 **Instructions:**
@@ -84,12 +84,6 @@ Your task is to generate at least 30 interesting items about this topic.
     {
       "text": "What is a quasar and how is it powered?",
       "search_query": "what is a quasar"
-    }
-  ],
-  "🚀 Space Exploration": [
-    {
-      "text": "Tip: You can track the International Space Station's position live online.",
-      "search_query": "track international space station live"
     }
   ]
 }
