@@ -66,39 +66,27 @@
 
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split('\n');
-                    buffer = lines.pop(); // Keep any partial line for the next chunk
+                    buffer = lines.pop(); 
 
                     for (const line of lines) {
-                        // Skip empty lines or comments
-                        if (!line.trim() || line.startsWith(':')) {
-                            continue;
-                        }
+                        if (!line.startsWith('data: ')) continue;
 
-                        // This is the core logic: process only lines with the 'data: ' prefix
-                        if (line.startsWith('data: ')) {
-                            const data = line.substring(6); // Remove 'data: ' prefix
-                            
-                            // Stop if we see the [DONE] signal
-                            if (data.trim() === '[DONE]') {
-                                continue;
+                        const data = line.substring(6);
+                        if (data.trim() === '[DONE]') continue;
+                        
+                        try {
+                            const chunkJson = JSON.parse(data);
+                            // --- THIS IS THE CRITICAL FIX ---
+                            // Safely check if the chunk contains the text content we need
+                            if (chunkJson.choices && chunkJson.choices[0] && chunkJson.choices[0].delta && typeof chunkJson.choices[0].delta.content === 'string') {
+                                assembledJsonString += chunkJson.choices[0].delta.content;
                             }
-
-                            // Try to parse the SSE JSON payload
-                            try {
-                                const chunkJson = JSON.parse(data);
-                                if (chunkJson.choices && chunkJson.choices.delta.content) {
-                                    // Append the actual text fragment to our assembly string
-                                    assembledJsonString += chunkJson.choices.delta.content;
-                                }
-                            } catch (e) {
-                                console.warn("Skipping non-JSON data chunk in stream:", data);
-                            }
+                        } catch (e) {
+                            console.warn("Could not parse a JSON chunk in the stream:", data);
                         }
                     }
                 }
                 
-                // Now, assembledJsonString contains the complete text sent by the LLM
-                // We still need to clean it of markdown and find the valid JSON inside
                 const firstBraceIndex = assembledJsonString.indexOf('{');
                 if (firstBraceIndex === -1) {
                     throw new Error("No JSON object found in the assembled LLM response.");
@@ -122,7 +110,7 @@
                 const finalJsonString = assembledJsonString.substring(firstBraceIndex, lastBraceIndex + 1);
 
                 const triviaData = JSON.parse(finalJsonString);
-                renderResults(triviaData);
+                renderResults( triviaData );
                 hideStatusMessage();
 
             } catch (error) {
@@ -141,8 +129,7 @@
                 title.textContent = categoryName;
                 categoryElement.appendChild(title);
 
-                const items = data[categoryName]; // This line was failing before
-                // A check to prevent the error, just in case
+                const items = data[categoryName];
                 if (Array.isArray(items)) {
                     items.forEach(item => {
                         const itemElement = document.createElement('div');
