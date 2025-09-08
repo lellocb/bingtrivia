@@ -47,8 +47,9 @@
             if (item) { 
                 const query = item.dataset.searchQuery; 
                 if(query) { 
-                    // Changed from google.com to bing.com
-                    window.open(`https://www.bing.com/search?q=${encodeURIComponent(query)}`, '_blank'); 
+                    // First, encode all special characters, then replace the specific %20 with a +
+                    const encodedQuery = encodeURIComponent(query).replace(/%20/g, '+');
+                    window.open(`https://www.bing.com/search?q=${encodedQuery}`, '_blank'); 
                 } 
             } 
         });
