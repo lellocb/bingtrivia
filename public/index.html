@@ -1,218 +1,153 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Curiosity Engine | Trivia Search</title>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
-      rel="stylesheet"
-    />
-
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
     <main>
-      <header>
-        <h1>Curiosity Engine</h1>
-        <p>
-          Enter a topic and discover interesting questions, facts, and tips.
-        </p>
-      </header>
-      <form id="topic-form">
-        <input
-          type="text"
-          id="topic-input"
-          placeholder="e.g., The Roman Empire, The Science of Sleep..."
-          required
-        />
-        <button type="submit">Generate</button>
-      </form>
-      <div id="suggested-topics-container">
-        <h3>Or, try one of today's topics:</h3>
-        <div id="suggested-topics"></div>
-      </div>
-      <div id="status-message"></div>
-      <div id="results-container"></div>
+        <header>
+            <h1>Curiosity Engine</h1>
+            <p>Enter a topic and discover interesting questions, facts, and tips.</p>
+        </header>
+        <form id="topic-form">
+            <input type="text" id="topic-input" placeholder="e.g., The Roman Empire, The Science of Sleep..." required>
+            <button type="submit">Generate</button>
+        </form>
+        <div id="suggested-topics-container">
+            <h3>Or, try one of today's topics:</h3>
+            <div id="suggested-topics"></div>
+        </div>
+        <div id="status-message"></div>
+        <div id="results-container"></div>
     </main>
 
     <script>
-      const API_URL = "/api/trivia"; // Points to our own secure backend!
+        const API_URL = "/api/trivia";
 
-      const topicForm = document.getElementById("topic-form");
-      const topicInput = document.getElementById("topic-input");
-      const suggestedTopicsContainer =
-        document.getElementById("suggested-topics");
-      const statusMessageContainer = document.getElementById("status-message");
-      const resultsContainer = document.getElementById("results-container");
+        const topicForm = document.getElementById('topic-form');
+        const topicInput = document.getElementById('topic-input');
+        const suggestedTopicsContainer = document.getElementById('suggested-topics');
+        const statusMessageContainer = document.getElementById('status-message');
+        const resultsContainer = document.getElementById('results-container');
 
-      document.addEventListener("DOMContentLoaded", () => {
-        loadInitialTopics();
-      });
+        document.addEventListener('DOMContentLoaded', () => { loadInitialTopics(); });
+        topicForm.addEventListener('submit', (e) => { e.preventDefault(); const topic = topicInput.value.trim(); if (topic) { fetchTrivia(topic); } });
+        suggestedTopicsContainer.addEventListener('click', (e) => { if (e.target.classList.contains('topic-button')) { const topic = e.target.dataset.topic; topicInput.value = topic; fetchTrivia(topic); } });
+        resultsContainer.addEventListener('click', (e) => { const item = e.target.closest('.result-item'); if (item) { const query = item.dataset.searchQuery; if(query) { window.open(`https://www.google.com/search?q=${encodeURIComponent(query)}`, '_blank'); } } });
 
-      function loadInitialTopics() {
-        const topics = [
-          "Bioluminescence",
-          "The Silk Road",
-          "Ancient Egyptian Inventions",
-          "The Challenger Deep",
-          "The History of Coffee",
-          "Quantum Computing",
-        ];
-        suggestedTopicsContainer.innerHTML = "";
-        topics.forEach((topic) => {
-          const button = document.createElement("button");
-          button.className = "topic-button";
-          button.textContent = topic;
-          button.dataset.topic = topic;
-          suggestedTopicsContainer.appendChild(button);
-        });
-      }
+        async function fetchTrivia(topic) {
+            resultsContainer.innerHTML = '';
+            showStatusMessage('loading', `Generating curiosities about "${topic}"...`);
+            
+            let fullResponse = '';
 
-      topicForm.addEventListener("submit", (e) => {
-        e.preventDefault();
-        const topic = topicInput.value.trim();
-        if (topic) {
-          fetchTrivia(topic);
-        }
-      });
-      suggestedTopicsContainer.addEventListener("click", (e) => {
-        if (e.target.classList.contains("topic-button")) {
-          const topic = e.target.dataset.topic;
-          topicInput.value = topic;
-          fetchTrivia(topic);
-        }
-      });
-      resultsContainer.addEventListener("click", (e) => {
-        const item = e.target.closest(".result-item");
-        if (item) {
-          const query = item.dataset.searchQuery;
-          if (query) {
-            window.open(
-              `https://www.google.com/search?q=${encodeURIComponent(query)}`,
-              "_blank"
-            );
-          }
-        }
-      });
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic })
+                });
 
-      async function fetchTrivia(topic) {
-        resultsContainer.innerHTML = "";
-        showStatusMessage(
-          "loading",
-          `Generating curiosities about "${topic}"...`
-        );
+                if (!response.ok) { throw new Error(`Server Error: ${response.status} ${response.statusText}`); }
 
-        let fullResponse = "";
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    fullResponse += decoder.decode(value, { stream: true });
+                }
+                
+                // --- CRITICAL DEBUG LOGGING ---
+                // This will show us EXACTLY what the server sent before we try to parse it.
+                console.log("--- RAW RESPONSE FROM SERVER ---");
+                console.log(fullResponse);
+                console.log("--- END OF RAW RESPONSE ---");
 
-        try {
-          const response = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ topic: topic }),
-          });
+                // The robust JSON parsing logic
+                const firstBraceIndex = fullResponse.indexOf('{');
+                if (firstBraceIndex === -1) {
+                    throw new Error("No JSON object found in the response.");
+                }
 
-          if (!response.ok) {
-            throw new Error(
-              `Server Error: ${response.status} ${response.statusText}`
-            );
-          }
+                let braceCount = 0;
+                let lastBraceIndex = -1;
+                for (let i = firstBraceIndex; i < fullResponse.length; i++) {
+                    if (fullResponse[i] === '{') {
+                        braceCount++;
+                    } else if (fullResponse[i] === '}') {
+                        braceCount--;
+                    }
+                    if (braceCount === 0) {
+                        lastBraceIndex = i;
+                        break;
+                    }
+                }
 
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
+                if (lastBraceIndex === -1) {
+                    throw new Error("Incomplete JSON object received.");
+                }
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            fullResponse += decoder.decode(value, { stream: true });
-          }
+                const jsonString = fullResponse.substring(firstBraceIndex, lastBraceIndex + 1);
 
-          // --- NEW, MORE ROBUST JSON PARSING LOGIC ---
-          // This logic finds the first complete JSON object and ignores any trailing data.
-          const firstBraceIndex = fullResponse.indexOf("{");
-          if (firstBraceIndex === -1) {
-            throw new Error("No JSON object found in the response.");
-          }
+                const triviaData = JSON.parse(jsonString);
+                renderResults(triviaData);
+                hideStatusMessage();
 
-          let braceCount = 0;
-          let lastBraceIndex = -1;
-          for (let i = firstBraceIndex; i < fullResponse.length; i++) {
-            if (fullResponse[i] === "{") {
-              braceCount++;
-            } else if (fullResponse[i] === "}") {
-              braceCount--;
+            } catch (error) {
+                console.error('CLIENT-SIDE ERROR:', error);
+                console.error('The raw response that caused the error was:', fullResponse); 
+                showStatusMessage('error', `An error occurred. Please open the developer console (F12) for details.`);
             }
+        }
 
-            if (braceCount === 0) {
-              lastBraceIndex = i;
-              break; // Found the end of the first complete object
+        function renderResults(data) {
+            resultsContainer.innerHTML = '';
+            for (const categoryName in data) {
+                const categoryElement = document.createElement('div');
+                categoryElement.className = 'category';
+                const title = document.createElement('h2');
+                title.textContent = categoryName;
+                categoryElement.appendChild(title);
+
+                const items = data[categoryName];
+                items.forEach(item => {
+                    const itemElement = document.createElement('div');
+                    itemElement.className = 'result-item';
+                    itemElement.textContent = item.text;
+                    itemElement.dataset.searchQuery = item.search_query;
+                    categoryElement.appendChild(itemElement);
+                });
+                resultsContainer.appendChild(categoryElement);
             }
-          }
-
-          if (lastBraceIndex === -1) {
-            throw new Error("Incomplete JSON object received.");
-          }
-
-          const jsonString = fullResponse.substring(
-            firstBraceIndex,
-            lastBraceIndex + 1
-          );
-          // --- END OF NEW LOGIC ---
-
-          const triviaData = JSON.parse(jsonString);
-          renderResults(triviaData);
-          hideStatusMessage();
-        } catch (error) {
-          console.error("Fetch Trivia Error:", error);
-          console.error(
-            "Malformed response string that caused the error:",
-            fullResponse
-          );
-          showStatusMessage(
-            "error",
-            `Something went wrong. Please check the console and try again. (${error.message})`
-          );
         }
-      }
 
-      function renderResults(data) {
-        resultsContainer.innerHTML = "";
-        for (const categoryName in data) {
-          const categoryElement = document.createElement("div");
-          categoryElement.className = "category";
-          const title = document.createElement("h2");
-          title.textContent = categoryName;
-          categoryElement.appendChild(title);
-
-          const items = data[categoryName];
-          items.forEach((item) => {
-            const itemElement = document.createElement("div");
-            itemElement.className = "result-item";
-            itemElement.textContent = item.text;
-            itemElement.dataset.searchQuery = item.search_query;
-            categoryElement.appendChild(itemElement);
-          });
-          resultsContainer.appendChild(categoryElement);
+        function loadInitialTopics() {
+            const topics = ["Bioluminescence", "The Silk Road", "Ancient Egyptian Inventions", "The Challenger Deep", "The History of Coffee", "Quantum Computing"];
+            suggestedTopicsContainer.innerHTML = '';
+            topics.forEach(topic => {
+                const button = document.createElement('button');
+                button.className = 'topic-button';
+                button.textContent = topic;
+                button.dataset.topic = topic;
+                suggestedTopicsContainer.appendChild(button);
+            });
         }
-      }
-
-      function showStatusMessage(type, message) {
-        statusMessageContainer.style.display = "block";
-        if (type === "loading") {
-          statusMessageContainer.innerHTML = `<div class="loader"></div><div>${message}</div>`;
-          statusMessageContainer.classList.remove("error");
-        } else if (type === "error") {
-          statusMessageContainer.innerHTML = `⚠️ ${message}`;
-          statusMessageContainer.classList.add("error");
+        
+        function showStatusMessage(type, message) {
+            statusMessageContainer.style.display = 'block';
+            if (type === 'loading') { statusMessageContainer.innerHTML = `<div class="loader"></div><div>${message}</div>`; statusMessageContainer.classList.remove('error'); }
+            else if (type === 'error') { statusMessageContainer.innerHTML = `⚠️ ${message}`; statusMessageContainer.classList.add('error'); }
         }
-      }
 
-      function hideStatusMessage() {
-        statusMessageContainer.style.display = "none";
-      }
+        function hideStatusMessage() { statusMessageContainer.style.display = 'none'; }
     </script>
-  </body>
+</body>
 </html>
